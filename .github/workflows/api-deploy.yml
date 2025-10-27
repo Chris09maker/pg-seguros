@@ -13,6 +13,7 @@ jobs:
     defaults:
       run:
         working-directory: server
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,21 +29,15 @@ jobs:
       - name: (Optional) Build
         run: npm run build || echo "skip build"
 
-      - name: Zip artifact
-        run: |
-          cd ..
-          zip -r api.zip server -x "server/node_modules/**" -x "server/.env"
-
-      #  Login a Azure con Service Principal 
       - name: Azure Login
         uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      # Deploy
+      # 🚀 Publica la carpeta server/ como wwwroot
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
           slot-name: production
-          package: api.zip
+          package: server
