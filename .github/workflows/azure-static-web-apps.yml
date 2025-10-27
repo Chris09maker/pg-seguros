@@ -4,9 +4,8 @@ on:
   push:
     branches: [ master ]
     paths:
-      - 'client/**'
-      - '.github/workflows/azure-static-web-apps.yml'
-  workflow_dispatch:
+      - "client/**"
+      - ".github/workflows/azure-static-web-apps.yml"
 
 jobs:
   build_and_deploy:
@@ -19,23 +18,32 @@ jobs:
       - name: Use Node 20
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: client/package-lock.json
+          node-version: "20"
 
-      - name: Install deps (client)
+      # --- PREPARAR E INSTALAR DEPENDENCIAS DEL FRONT ---
+      # Quitamos el lockfile para evitar el bug de npm con optional deps nativas (Rollup)
+      - name: Remove front lockfile (workaround rollup optional deps)
+        run: |
+          if [ -f client/package-lock.json ]; then rm -f client/package-lock.json; fi
+
+      - name: Install deps (front)
         working-directory: client
-        run: npm ci || npm install --force
+        run: |
+          npm config set fund false
+          npm config set audit false
+          npm install
 
-      - name: Build (client)
+      # --- COMPILAR EL FRONT (Vite genera client/dist) ---
+      - name: Build (front)
         working-directory: client
         run: npm run build
 
-      # Subimos SOLO lo compilado para evitar "too many static files"
-      - name: Deploy (upload prebuilt dist)
+      # --- PUBLICAR SOLO EL ARTEFACTO (dist) A SWA ---
+      - name: Deploy to Azure Static Web Apps (upload dist)
         uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
           action: upload
-          app_location: /             # requerido por el validador aunque no se use en 'upload'
-          app_artifact_location: client/dist
+          app_location: client            # raíz del front
+          app_artifact_location: client/dist  # carpeta ya construida
+          skip_app_build: true            # evita que Oryx vuelva a construir
