@@ -20,8 +20,7 @@ jobs:
         with:
           node-version: "20"
 
-      # --- PREPARAR E INSTALAR DEPENDENCIAS DEL FRONT ---
-      # Quitamos el lockfile para evitar el bug de npm con optional deps nativas (Rollup)
+      # --- Evitar el bug de npm con optional deps (Rollup) ---
       - name: Remove front lockfile (workaround rollup optional deps)
         run: |
           if [ -f client/package-lock.json ]; then rm -f client/package-lock.json; fi
@@ -33,17 +32,25 @@ jobs:
           npm config set audit false
           npm install
 
-      # --- COMPILAR EL FRONT (Vite genera client/dist) ---
       - name: Build (front)
         working-directory: client
         run: npm run build
 
-      # --- PUBLICAR SOLO EL ARTEFACTO (dist) A SWA ---
-      - name: Deploy to Azure Static Web Apps (upload dist)
+      # Verificación: cuántos ficheros hay en el artefacto
+      - name: Print dist file count
+        run: |
+          echo "Counting files in client/dist ..."
+          find client/dist -type f | wc -l
+          du -sh client/dist || true
+          # Listado de primer nivel para visualizar
+          ls -la client/dist || true
+
+      # --- Subir SOLO client/dist ---
+      - name: Deploy to Azure Static Web Apps (upload dist only)
         uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
           action: upload
-          app_location: client            # raíz del front
-          app_artifact_location: client/dist  # carpeta ya construida
-          skip_app_build: true            # evita que Oryx vuelva a construir
+          app_location: "/"              # <- raíz del repo
+          app_artifact_location: "client/dist"  # <- artefacto de build
+          skip_app_build: true           # <- no reconstruir con Oryx
