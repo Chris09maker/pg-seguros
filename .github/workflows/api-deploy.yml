@@ -33,11 +33,16 @@ jobs:
           cd ..
           zip -r api.zip server -x "server/node_modules/**" -x "server/.env"
 
+      #  Login a Azure con Service Principal 
+      - name: Azure Login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # Deploy
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
-        
-          app-name: pg-seguros-api
+          app-name: ${{ secrets.AZURE_WEBAPP_NAME }}
           slot-name: production
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE }}
           package: api.zip
