@@ -2,10 +2,11 @@ name: Deploy Front to Azure Static Web Apps
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ master ]
     paths:
-      - "client/**"
-      - ".github/workflows/azure-static-web-apps.yml"
+      - 'client/**'
+      - '.github/workflows/azure-static-web-apps.yml'
+  workflow_dispatch:
 
 jobs:
   build_and_deploy:
@@ -18,32 +19,23 @@ jobs:
       - name: Use Node 20
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
 
-      # ---- Workaround npm/rollup ----
-      - name: Update npm
-        run: npm i -g npm@latest
-
-      - name: Clean lockfile and node_modules
+      - name: Install deps (client)
         working-directory: client
-        run: |
-          rm -f package-lock.json
-          rm -rf node_modules
-      # --------------------------------
+        run: npm ci || npm install --force
 
-      - name: Install deps
-        working-directory: client
-        run: npm install --force
-
-      - name: Build
+      - name: Build (client)
         working-directory: client
         run: npm run build
 
-      - name: Deploy to Azure Static Web Apps
+      # Subimos SOLO lo compilado para evitar "too many static files"
+      - name: Deploy (upload prebuilt dist)
         uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
-          action: "upload"                  # <--- requerido
-          skip_app_build: true              # ya construimos con Vite
-          app_location: "client"            # carpeta del front
-          output_location: "dist"           # carpeta generada por Vite
+          action: upload
+          app_location: /             # requerido por el validador aunque no se use en 'upload'
+          app_artifact_location: client/dist
