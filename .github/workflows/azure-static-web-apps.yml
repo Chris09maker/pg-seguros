@@ -2,13 +2,10 @@ name: Deploy Front to Azure Static Web Apps
 
 on:
   push:
-    branches:
-      - master
-      - main
+    branches: [ "master" ]
     paths:
       - "client/**"
       - ".github/workflows/azure-static-web-apps.yml"
-  workflow_dispatch:
 
 jobs:
   build_and_deploy:
@@ -18,29 +15,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Use Node 20
         uses: actions/setup-node@v4
         with:
           node-version: "20"
 
-      # ---- WORKAROUND ROLLUP / NPM OPTIONAL DEPS ----
-      # 1) Intento normal con npm ci pero ignorando dependencias opcionales.
-      - name: Install deps (ignore optional)
-        working-directory: client
-        run: npm ci
-        env:
-          npm_config_ignore_optional: "true"
-        continue-on-error: true
+      # ---- Workaround npm/rollup ----
+      - name: Update npm
+        run: npm i -g npm@latest
 
-      # 2) Si lo anterior falló, hacemos un fallback:
-      #    limpiamos lockfile y cache y usamos npm install sin opcionales.
-      - name: Fallback install (no lock, no optional)
-        if: failure()
+      - name: Clean lockfile and node_modules
         working-directory: client
         run: |
           rm -f package-lock.json
-          npm cache clean --force
-          npm install --no-optional
+          rm -rf node_modules
+      # --------------------------------
+
+      - name: Install deps
+        working-directory: client
+        run: npm install --force
 
       - name: Build
         working-directory: client
@@ -50,7 +43,7 @@ jobs:
         uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          action: "upload"
-          app_location: "client"
-          output_location: "dist"
+          action: "upload"                  # <--- requerido
+          skip_app_build: true              # ya construimos con Vite
+          app_location: "client"            # carpeta del front
+          output_location: "dist"           # carpeta generada por Vite
