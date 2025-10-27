@@ -46,7 +46,7 @@ app.use(
 app.use(express.json({ limit: "5mb" }));
 
 /* ---------- Healthcheck ---------- */
-app.get("/health", (_req, res) => {
+app.get(["/health", "/api/health"], (_req, res) => {
   res.json({
     ok: true,
     service: "pg-seguros-api",
