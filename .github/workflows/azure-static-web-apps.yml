@@ -23,9 +23,24 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install dependencies
+      # ---- WORKAROUND ROLLUP / NPM OPTIONAL DEPS ----
+      # 1) Intento normal con npm ci pero ignorando dependencias opcionales.
+      - name: Install deps (ignore optional)
         working-directory: client
         run: npm ci
+        env:
+          npm_config_ignore_optional: "true"
+        continue-on-error: true
+
+      # 2) Si lo anterior falló, hacemos un fallback:
+      #    limpiamos lockfile y cache y usamos npm install sin opcionales.
+      - name: Fallback install (no lock, no optional)
+        if: failure()
+        working-directory: client
+        run: |
+          rm -f package-lock.json
+          npm cache clean --force
+          npm install --no-optional
 
       - name: Build
         working-directory: client
