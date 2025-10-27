@@ -35,7 +35,9 @@ jobs:
       - name: Build (front)
         working-directory: client
         run: npm run build
-
+        env:
+          VITE_API_URL: ${{ secrets.API_BASE_URL }}
+          
       - name: Sanity check (dist)
         run: |
           test -f client/dist/index.html || (echo "NO index.html in client/dist" && exit 1)
