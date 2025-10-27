@@ -20,8 +20,8 @@ jobs:
         with:
           node-version: "20"
 
-      # --- Evitar el bug de npm con optional deps (Rollup) ---
-      - name: Remove front lockfile (workaround rollup optional deps)
+      # Workaround del bug de npm con optional deps (rollup nativo)
+      - name: Remove lockfile (front)
         run: |
           if [ -f client/package-lock.json ]; then rm -f client/package-lock.json; fi
 
@@ -36,21 +36,17 @@ jobs:
         working-directory: client
         run: npm run build
 
-      # Verificación: cuántos ficheros hay en el artefacto
-      - name: Print dist file count
+      - name: Sanity check (dist)
         run: |
-          echo "Counting files in client/dist ..."
-          find client/dist -type f | wc -l
-          du -sh client/dist || true
-          # Listado de primer nivel para visualizar
-          ls -la client/dist || true
+          test -f client/dist/index.html || (echo "NO index.html in client/dist" && exit 1)
+          echo "Files in dist:" && find client/dist -maxdepth 1 -type f -printf '%f\n' || true
 
-      # --- Subir SOLO client/dist ---
-      - name: Deploy to Azure Static Web Apps (upload dist only)
+      # >>>>>>>>>>>>>> Despliegue SOLO del artefacto (dist)
+      - name: Deploy to Azure Static Web Apps (upload dist)
         uses: Azure/static-web-apps-deploy@v1
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_STATIC_WEB_APPS_API_TOKEN }}
           action: upload
-          app_location: "/"              # <- raíz del repo
-          app_artifact_location: "client/dist"  # <- artefacto de build
-          skip_app_build: true           # <- no reconstruir con Oryx
+          # MUY IMPORTANTE: apuntamos DIRECTO al artefacto que contiene index.html
+          app_location: client/dist
+          # No pongas app_artifact_location ni skip_app_build en modo upload
