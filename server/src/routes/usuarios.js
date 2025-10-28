@@ -2,21 +2,17 @@
 import { Router } from "express";
 import { z } from "zod";
 import { pool } from "../db/pool.js";
-// Si tienes bcrypt instalado, descomenta la línea siguiente y el uso en el update/create.
 import bcrypt from "bcryptjs";
 
 const r = Router();
 
-/* Utilidades */
+/* ------------------------- Validaciones ------------------------- */
 const EmailRelax = z
   .string()
   .trim()
   .transform((v) => v.toLowerCase())
-  // Permitir vacío o un email "simple" (usuario@dominio)
-  .refine(
-    (v) => v === "" || /^[^\s@]+@[^\s@]+$/.test(v),
-    "Invalid email address"
-  );
+  // Permitir vacío o un email "simple"
+  .refine((v) => v === "" || /^[^\s@]+@[^\s@]+$/.test(v), "Invalid email address");
 
 const Estado = z.enum(["ACTIVO", "INACTIVO"]);
 
@@ -30,7 +26,7 @@ const baseUsuarioShape = {
     .union([
       z.object({ roleId: z.number().int().positive() }),
       z.object({ rol: z.string().trim().min(1) }),
-      z.object({}), // ninguno: se mantiene el actual en update
+      z.object({}), // nada -> conservar en update
     ])
     .optional()
     .default({}),
@@ -39,17 +35,15 @@ const baseUsuarioShape = {
 
 const createSchema = z.object({
   ...baseUsuarioShape,
-  // en creación password es obligatoria
-  password: z.string().min(6),
+  password: z.string().min(6), // obligatoria al crear
 });
 
 const updateSchema = z.object({
   ...baseUsuarioShape,
-  // en update password es opcional (si llega, se cambia)
-  password: z.string().min(6).optional(),
+  password: z.string().min(6).optional(), // opcional al editar
 });
 
-/* Helpers */
+/* --------------------------- Helpers --------------------------- */
 async function resolveRoleId(conn, roleIdOrRol, currentRoleId = null) {
   if (!roleIdOrRol) return currentRoleId;
   if ("roleId" in roleIdOrRol && typeof roleIdOrRol.roleId === "number") {
@@ -61,13 +55,12 @@ async function resolveRoleId(conn, roleIdOrRol, currentRoleId = null) {
       [roleIdOrRol.rol]
     );
     if (rows.length) return rows[0].id;
-    // Si no existe, mantener el actual
     return currentRoleId;
   }
   return currentRoleId;
 }
 
-/* Listado */
+/* --------------------------- Listado --------------------------- */
 r.get("/", async (req, res) => {
   try {
     const q = (req.query.q || "").toString().trim();
@@ -98,12 +91,12 @@ r.get("/", async (req, res) => {
 
     res.json(rows);
   } catch (e) {
-    console.error("[GET /usuarios] ", e);
+    console.error("[GET /usuarios]", e);
     res.status(500).json({ message: "Error al listar usuarios" });
   }
 });
 
-/* Obtener por id */
+/* ------------------------ Obtener por id ----------------------- */
 r.get("/:id", async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -121,27 +114,30 @@ r.get("/:id", async (req, res) => {
     if (!rows.length) return res.status(404).json({ message: "No encontrado" });
     res.json(rows[0]);
   } catch (e) {
-    console.error("[GET /usuarios/:id] ", e);
+    console.error("[GET /usuarios/:id]", e);
     res.status(500).json({ message: "Error al obtener usuario" });
   }
 });
 
-/* Crear */
+/* ---------------------------- Crear ---------------------------- */
 r.post("/", async (req, res) => {
   try {
     const parsed = createSchema.parse(req.body);
 
-    await pool.beginTransaction();
+    // Usar conexión del pool para transacción
+    const conn = await pool.getConnection();
     try {
-      // Resolver role id (desde roleId o desde rol string)
-      let roleId = null;
-      roleId = await resolveRoleId(pool, parsed.roleIdOrRol, null);
-      if (!roleId) return res.status(400).json({ message: "Rol inválido" });
+      await conn.beginTransaction();
+
+      const roleId = await resolveRoleId(conn, parsed.roleIdOrRol, null);
+      if (!roleId) {
+        await conn.rollback();
+        return res.status(400).json({ message: "Rol inválido" });
+      }
 
       const hash = await bcrypt.hash(parsed.password, 10);
-      //const hash = parsed.password; // <- si no usas bcrypt aún
 
-      await pool.query(
+      await conn.query(
         `INSERT INTO usuarios (username, email, password_hash, nombres, apellidos, role_id, estado)
          VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [
@@ -155,16 +151,17 @@ r.post("/", async (req, res) => {
         ]
       );
 
-      await pool.commit();
+      await conn.commit();
       res.status(201).json({ ok: true });
     } catch (err) {
-      await pool.rollback();
-      console.error("[POST /usuarios] ", err);
-      // duplicados
+      try { await conn.rollback(); } catch {}
+      console.error("[POST /usuarios]", err);
       if (err?.code === "ER_DUP_ENTRY") {
         return res.status(409).json({ message: "Username o email ya existe" });
       }
       res.status(500).json({ message: "Error al crear usuario" });
+    } finally {
+      conn.release();
     }
   } catch (zerr) {
     console.error("[API ERROR] ZodError:", zerr);
@@ -172,7 +169,7 @@ r.post("/", async (req, res) => {
   }
 });
 
-/* Actualizar */
+/* --------------------------- Actualizar ------------------------ */
 r.put("/:id", async (req, res) => {
   try {
     const id = Number(req.params.id);
@@ -184,6 +181,8 @@ r.put("/:id", async (req, res) => {
     if (!curRows.length) return res.status(404).json({ message: "No encontrado" });
 
     const currentRoleId = curRows[0].role_id;
+
+    // Resolver roleId usando el pool (no requiere transacción para update)
     const roleId = await resolveRoleId(pool, parsed.roleIdOrRol, currentRoleId);
 
     const fields = [];
@@ -215,17 +214,13 @@ r.put("/:id", async (req, res) => {
     }
     if (parsed.password) {
       const hash = await bcrypt.hash(parsed.password, 10);
-      //const hash = parsed.password; // <- si no usas bcrypt aún
       fields.push("password_hash = ?");
       params.push(hash);
     }
 
-    if (!fields.length) {
-      return res.json({ ok: true }); // nada que actualizar
-    }
+    if (!fields.length) return res.json({ ok: true }); // nada que actualizar
 
     params.push(id);
-
     await pool.query(
       `UPDATE usuarios SET ${fields.join(", ")}, actualizado_en = NOW() WHERE id = ?`,
       params
@@ -233,12 +228,9 @@ r.put("/:id", async (req, res) => {
 
     res.json({ ok: true });
   } catch (zerr) {
-    console.error("[API ERROR] ZodError:", zerr);
+    console.error("[PUT /usuarios/:id]", zerr);
     res.status(400).json({ message: "Datos inválidos" });
   }
 });
-
-/* Dar de baja/activar — atajo opcional */
-// r.patch("/:id/estado", async (req, res) => { ... });
 
 export default r;
