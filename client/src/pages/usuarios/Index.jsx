@@ -37,13 +37,15 @@ export default function UsuariosIndex() {
   const firstLoad = useRef(true);
 
   /* -------------------- Cargar roles (si existen) ---------------- */
-  const loadRoles = useCallback(async () => {
+    const loadRoles = useCallback(async () => {
     try {
-      const { data } = await api.get("/usuarios/roles");
-      const arr = Array.isArray(data) ? data : data?.items ?? [];
-      if (arr.length) setRoles(arr.map(String));
+      // El endpoint correcto es /roles (no /usuarios/roles)
+      const { data } = await api.get("/roles", { params: { limit: 100 } });
+      const items = Array.isArray(data) ? data : data?.items ?? [];
+      const nombres = items.map(r => String(r.nombre).toUpperCase()).filter(Boolean);
+      if (nombres.length) setRoles(nombres);
     } catch {
-      // fallback si no hay endpoint de roles
+      // fallback si falla
     }
   }, []);
 
