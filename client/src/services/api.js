@@ -8,18 +8,15 @@
 //   const base = "http://localhost:3000/api"; // ← forzar localhost
 // -------------------------------------------------------------
 
+// client/src/services/api.js
 import axios from "axios";
 
-const base = (
-  import.meta?.env?.VITE_API_URL || "http://localhost:3000/api"
-).replace(/\/+$/, ""); // quita "/" finales por seguridad
+const base = (import.meta.env.VITE_API_URL || "http://localhost:3000/api").replace(/\/+$/, "");
 
 const api = axios.create({
   baseURL: base,
   timeout: 15000,
+  withCredentials: true, // ✅ necesario para login en Azure
 });
-
-// Puedes agregar interceptores aquí si los necesitas más adelante
-// api.interceptors.request.use((config) => { ...; return config; });
 
 export default api;
